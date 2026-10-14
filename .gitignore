@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# ACPI build artifacts and binaries
+/tmp/acpi_touch_build/
+*.aml
+*.dsl
+
+# Logs and runtime
+*.log
+/run/touchscreen-gpioset.pid
+
+# System and editor configurations
+.vscode/
+.idea/
+.DS_Store
+*.swp
+*~
+*.bak
+*.orig

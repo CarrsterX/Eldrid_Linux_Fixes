@@ -1,0 +1,22 @@
+[Unit]
+Description=Goodix Touchscreen GPIO Power Sequencing Fix (Eldrid/GDIX0000)
+Documentation=https://cros-help.chromium.org
+# The i2c_hid_acpi driver fails probe on cold boot due to an ACPI timing race condition.
+# This service establishes proper GPIO electrical power lines and binds the driver explicitly.
+After=systemd-udev-settle.service
+Before=display-manager.service
+Wants=systemd-udev-settle.service
+
+[Service]
+Type=forking
+ExecStart=/usr/local/bin/fix-touchscreen.sh
+ExecStop=/bin/bash -c 'kill $(cat /run/touchscreen-gpioset.pid 2>/dev/null) 2>/dev/null || true; killall gpioset 2>/dev/null || true'
+RemainAfterExit=yes
+# Retry upon failure (e.g. if udev gpiochip nodes are still being enumerated)
+Restart=on-failure
+RestartSec=2s
+StartLimitIntervalSec=30s
+StartLimitBurst=5
+
+[Install]
+WantedBy=multi-user.target
