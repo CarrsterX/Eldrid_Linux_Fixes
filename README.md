@@ -110,15 +110,18 @@ sudo ./install_tablet_mode.sh
 ```
 
 #### Step 3.2: How It Operates
-- **Entering Tablet Mode (Fold screen $\ge 215^\circ$ for $> 1.0\text{s}$):**
-  - Internal touchpad is inhibited (`/sys/class/input/input*/inhibited = 1`).
-  - Keyboard backlight is turned off.
-  - Alphanumeric typing is silenced via libinput.
-  - **Hardware side volume buttons (+ / -) and power button remain 100% active.**
-- **Returning to Laptop Mode (Unfold screen $\le 165^\circ$ for $> 0.8\text{s}$):**
-  - Touchpad and typing re-enabled instantly.
-  - Previous keyboard illumination level is restored.
-- **Anti-Shake Protection:** Rapid movement or shaking emits ChromeOS EC status `500` (`LID_ANGLE_UNRELIABLE`), which the daemon discards to prevent accidental triggers.
+- **Instant Dual Detection:**
+  - Directly listens to kernel `Tablet Mode Switch` (`GOOG0006:00` / `/dev/input/by-path/*GOOG0006*-event`) via non-blocking `evdev` and `select()` for zero-latency response.
+  - IIO lid angle sensor (`cros-ec-lid-angle`) serves as secondary confirmation and fallback, filtering out ChromeOS EC transit noise (`500`).
+- **Entering Tablet Mode:**
+  - **Keyboard Backlight Auto-Off:** Reads current brightness, saves it, and writes `0` to `/sys/class/leds/chromeos::kbd_backlight/brightness`.
+  - **Touchpad Inhibit:** Writes `1` to `/sys/class/input/input*/inhibited`.
+  - **Dynamic Keyd Profile Switching:** Atomically switches `/etc/keyd/cros.conf` to `cros-tablet.profile`. 267 physical keys (Tab, Backspace, top-row action keys, letter/number matrix) are explicitly mapped to `noop`, completely preventing accidental inputs while holding the tablet.
+  - **Chassis Volume Rocker Active:** Hardware side volume buttons (+ / -) remain 100% functional via libinput quirk `ModelTabletModeNoSuspend=1`.
+- **Returning to Laptop Mode:**
+  - Touchpad reactivated (`inhibited = 0`).
+  - Exact previous keyboard backlight illumination level is restored.
+  - Atomically switches back to `cros-laptop.profile` (all ChromeOS shortcuts, media actions, and Fn-mode restored).
 
 #### Step 3.3: Verification & Uninstallation
 ```bash
