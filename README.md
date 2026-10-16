@@ -83,8 +83,9 @@ sudo ./install_keyboard_fix.sh
 
 #### Step 2.2: How to Use the Keyboard Features
 - **Toggle Fn Lock Mode:** Press **`Left Shift + Meta (Search) + Esc`**
-  - **Media Mode (Default):** Back, Forward, Refresh, Fullscreen, Overview, Brightness Down/Up, Mute, Volume Down/Up.
+  - **Media Mode (Default):** Back, Forward, Refresh, Fullscreen, Overview (F5), Brightness Down/Up, Mute, Volume Down/Up.
   - **Function Keys Mode:** Direct **F1, F2, F3 ... F10** (ideal for IDEs, terminal, and gaming).
+- **F5 Action Key (ChromeOS Overview):** Mapped directly to **`Super` (`leftmeta`)**, opening GNOME Activities or KDE Plasma Window Overview instantly.
 - **Lock Screen:** Press the dedicated **Lock Key** (top right) $\to$ triggers **`Super + L`** (locks GNOME Shell immediately).
 - **Keyboard Backlight Control:** Press **`Alt + F6`** (brightness down) or **`Alt + F7`** (brightness up).
 - **Temporary Cross-Access:** In either mode, hold **`Meta (Search)`** while tapping any top-row key to use the opposite mode.
@@ -167,22 +168,22 @@ rust-fp add index
 
 ---
 
-### 6. All-in-One Full Hardware Setup
+### 6. All-in-One Full Hardware Setup (Recommended)
 
-To apply all three core fixes (Touchscreen, Keyboard, and Tablet Mode) in a single sequence on a fresh installation:
+To configure all hardware components (Touchscreen, Keyboard with F5 Overview, and 2-in-1 Tablet Mode) in a single unified step, use the **Master Setup Suite**:
 
 ```bash
 git clone https://github.com/CarrsterX/Eldrid_Linux_Fixes.git
 cd Eldrid_Linux_Fixes
 
-# 1. Apply Touchscreen Fix:
-sudo ./install_fix.sh
+# Interactive menu (select components or install all):
+sudo ./setup.sh
 
-# 2. Apply Keyboard & Fn Keys Fix:
-sudo ./install_keyboard_fix.sh
+# Or unattended full installation of all modules:
+sudo ./setup.sh --all
 
-# 3. Apply 2-in-1 Tablet Mode Daemon:
-sudo ./install_tablet_mode.sh
+# Run live diagnostic checks of all drivers, sensors, and daemons:
+sudo ./setup.sh --status
 ```
 
 ---
