@@ -123,6 +123,12 @@ sudo ./install_tablet_mode.sh
   - Touchpad reactivated (`inhibited = 0`).
   - Exact previous keyboard backlight illumination level is restored.
   - Atomically switches back to `cros-laptop.profile` (all ChromeOS shortcuts, media actions, and Fn-mode restored).
+- **Intelligent Backlight Idle Timeout (ChromeOS-Style Power Saving):**
+  - Monitors passive keyboard (`keyd`) and touchpad (`Elan`) activity with non-blocking evdev.
+  - After 30 seconds of inactivity, turns off keyboard backlight LEDs (`brightness = 0`) to save battery without affecting typing or key responsiveness.
+  - Pressing any key or touching the touchpad immediately re-illuminates the keyboard to the exact saved percentage with 0ms latency.
+  - Respects manual settings: if set to 0% manually, it remains off.
+  - Configurable via `/etc/cros_tablet_daemon.conf` (`KBD_IDLE_TIMEOUT=30`).
 
 #### Step 3.3: Verification & Uninstallation
 ```bash

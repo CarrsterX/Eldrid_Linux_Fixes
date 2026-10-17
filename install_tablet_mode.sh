@@ -9,6 +9,7 @@
 #    - Keeps physical chassis volume rocker (+/-) fully operational.
 # 3. Synchronized keyboard backlight: Turns off in tablet mode, restores brightness in laptop mode.
 # 4. Hardware touchpad inhibition while folded.
+# 5. Smart backlight auto-timeout (ChromeOS-style idle power saving, wake on key/touchpad).
 
 set -e
 
@@ -77,6 +78,18 @@ for p in /sys/class/input/input*/name; do
         fi
     fi
 done
+
+# 4b. Configure battery-saving keyboard backlight idle timeout
+if [ ! -f /etc/cros_tablet_daemon.conf ]; then
+    echo "[*] Creating /etc/cros_tablet_daemon.conf (Default 30s timeout)..."
+    cat << 'CONF' > /etc/cros_tablet_daemon.conf
+# Hardware daemon configuration for HP Chromebook x360 14c (Eldrid)
+# Idle timeout without keyboard or touchpad interaction before turning off backlight LEDs (in seconds).
+# Default: 30 seconds (ChromeOS style). Set to 0 to disable auto-timeout.
+KBD_IDLE_TIMEOUT=30
+CONF
+    chmod 644 /etc/cros_tablet_daemon.conf
+fi
 
 # 5. Deploy systemd service unit
 echo "[*] Deploying /etc/systemd/system/cros-tablet-mode.service..."
