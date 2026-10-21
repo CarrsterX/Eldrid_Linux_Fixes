@@ -58,15 +58,17 @@ sudo ./test_touchscreen_live.sh
 ```
 *Touch the display to confirm touch response.*
 
-#### Step 1.2: Permanent Installation (Persistent Across Reboots)
-Deploys both the userspace systemd GPIO service and the complementary initramfs ACPI table override:
+#### Step 1.2: Permanent Installation (Persistent Across Reboots & Suspend)
+Deploys the userspace systemd GPIO service, the initramfs ACPI table override, and the automatic suspend/resume hook:
 ```bash
 sudo ./install_fix.sh
 ```
 
-#### Step 1.3: Verify Status
+#### Step 1.3: Verify Status & Suspend Recovery
 ```bash
 systemctl status touchscreen-init.service
+# Check post-suspend recovery logs:
+grep 'POST-RESUME' /var/log/touchscreen-init.log
 dmesg | grep -i -E "gdix|goodix|i2c_hid"
 ```
 
