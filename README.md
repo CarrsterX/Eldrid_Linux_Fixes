@@ -6,14 +6,15 @@ A curated collection of hardware initialization scripts, kernel patches, daemons
 
 ## 📋 Table of Contents
 - [Hardware Features & Fixes Overview](#-hardware-features--fixes-overview)
-- [🛠️ Step-by-Step Installation Guide](#️-step-by-step-installation-guide)
-  - [1. Prerequisites & Repository Setup](#1-prerequisites--repository-setup)
+- [📁 Repository Architecture](#-repository-architecture)
+- [🚀 Quick Start (Master Suite)](#-quick-start-master-suite)
+- [🛠️ Step-by-Step Installation & Diagnostic Guide](#️-step-by-step-installation--diagnostic-guide)
+  - [1. Prerequisites & Setup](#1-prerequisites--setup)
   - [2. Fix 1: Goodix Touchscreen Digitizer (`GDIX0000`)](#2-fix-1-goodix-touchscreen-digitizer-gdix0000)
   - [3. Fix 2: Keyboard Remapping & Fn-Lock](#3-fix-2-keyboard-remapping--fn-lock)
   - [4. Fix 3: 2-in-1 Convertible Tablet Mode](#4-fix-3-2-in-1-convertible-tablet-mode)
-  - [5. Fix 4: Battery & S0ix Sleep Optimization](#5-fix-4-battery--s0ix-sleep-optimization)
+  - [5. Fix 4: Battery & Native S0ix Sleep Optimization](#5-fix-4-battery--native-s0ix-sleep-optimization)
   - [6. Fix 5: ChromeOS Fingerprint Sensor & Zero-Lag Unlock](#6-fix-5-chromeos-fingerprint-sensor--zero-lag-unlock)
-  - [7. All-in-One Full Hardware Setup](#7-all-in-one-full-hardware-setup-recommended)
 - [🔍 Deep-Dive Technical Root Causes & Solutions](#-deep-dive-technical-root-causes--solutions)
 - [👥 Acknowledgements & Credits](#-acknowledgements--credits)
 - [📜 License](#-license)
@@ -32,18 +33,88 @@ A curated collection of hardware initialization scripts, kernel patches, daemons
 
 ---
 
-## 🛠️ Step-by-Step Installation Guide
+## 📁 Repository Architecture
 
-### 1. Prerequisites & Repository Setup
+The repository is cleanly partitioned into a master orchestrator in the root and modular subdirectories:
 
-Ensure Git and basic system build utilities are installed:
+```text
+Eldrid_Linux_Fixes/
+├── setup.sh                     # Master interactive configurator & CLI runner
+├── README.md                    # Comprehensive documentation & diagnostic guides
+├── LICENSE                      # GNU General Public License v3.0
+├── .gitignore                   # Git exclusion rules (keeps local notes private)
+└── scripts/
+    ├── install/                 # Installation scripts and service definitions
+    │   ├── apply_touchscreen_fix.py
+    │   ├── cros-fprint-bridge.py
+    │   ├── cros-laptop.profile
+    │   ├── cros_tablet_daemon.py
+    │   ├── cros-tablet.profile
+    │   ├── fingerprint-resume.sh
+    │   ├── fix-touchscreen.sh
+    │   ├── install_battery.sh
+    │   ├── install_fingerprint.sh
+    │   ├── install_keyboard.sh
+    │   ├── install_tablet.sh
+    │   ├── install_touchscreen.sh
+    │   ├── optimize_battery.sh
+    │   ├── test_touchscreen_live.sh
+    │   ├── touchscreen-init.service
+    │   └── touchscreen-resume.sh
+    │
+    ├── checkers/                # Deep diagnostic checkers with live sensors
+    │   ├── check_all.sh         # Master test runner (evaluates all subsystems)
+    │   ├── check_battery.sh     # Tests s2idle, EPP, TuneD, PCIe ASPM, EC threshold
+    │   ├── check_fingerprint.sh # Tests FPMCU, D-Bus bridge, PAM, GDM multiplier
+    │   ├── check_keyboard.sh    # Tests keyd service, uinput virtual device, backlight
+    │   ├── check_tablet.sh      # Reads IIO hinge angle, GOOG0006 switch, quirks
+    │   └── check_touchscreen.sh # Tests I2C driver binding, input nodes, resume logs
+    │
+    └── uninstall/               # Clean uninstallation and restoration scripts
+        ├── uninstall_all.sh
+        ├── uninstall_battery.sh
+        ├── uninstall_fingerprint.sh
+        ├── uninstall_keyboard.sh
+        ├── uninstall_tablet.sh
+        └── uninstall_touchscreen.sh
+```
+
+---
+
+## 🚀 Quick Start (Master Suite)
+
+The fastest and most reliable way to configure or diagnose your Chromebook is using **`setup.sh`**:
+
+```bash
+# Clone the repository:
+git clone https://github.com/CarrsterX/Eldrid_Linux_Fixes.git
+cd Eldrid_Linux_Fixes
+
+# Launch interactive menu (Install, Diagnose, or Uninstall):
+sudo ./setup.sh
+
+# Or unattended full installation of all modules:
+sudo ./setup.sh --all
+
+# Run comprehensive hardware diagnostics across all subsystems:
+sudo ./setup.sh --check
+
+# Uninstall all modules and restore stock hardware defaults:
+sudo ./setup.sh --uninstall-all
+```
+
+---
+
+## 🛠️ Step-by-Step Installation & Diagnostic Guide
+
+### 1. Prerequisites & Setup
+
+Ensure Git and basic build utilities are installed:
 
 ```bash
 # On Fedora / RHEL:
 sudo dnf install -y git libgpiod-utils iasl dracut gcc make kernel-headers
 
-# Clone this repository:
-git clone https://github.com/CarrsterX/Eldrid_Linux_Fixes.git
 cd Eldrid_Linux_Fixes
 ```
 
@@ -51,31 +122,33 @@ cd Eldrid_Linux_Fixes
 
 ### 2. Fix 1: Goodix Touchscreen Digitizer (`GDIX0000`)
 
-You can test the touchscreen live in your current session first, or install the permanent boot service directly.
-
 #### Step 1.1: Live Diagnostic Test (Optional, No Reboot Required)
 Test the electrical GPIO sequence and immediately verify touchscreen responsiveness:
 ```bash
-sudo ./test_touchscreen_live.sh
+sudo ./scripts/install/test_touchscreen_live.sh
 ```
 *Touch the display to confirm touch response.*
 
 #### Step 1.2: Permanent Installation (Persistent Across Reboots & Suspend)
-Deploys the userspace systemd GPIO service, the initramfs ACPI table override, and the automatic suspend/resume hook:
+Deploys the ACPI SSDT table override via Dracut and installs the automatic suspend/resume hook:
 ```bash
-sudo ./install_fix.sh
+sudo ./scripts/install/install_touchscreen.sh
 ```
 
-#### Step 1.3: Verify Status & Suspend Recovery
+#### Step 1.3: Run Diagnostic Checker & Verify Status
 ```bash
-# Check service status:
+# Run automated touchscreen checker:
+sudo ./scripts/checkers/check_touchscreen.sh
+
+# Or manual verification commands:
 systemctl status touchscreen-init.service
-
-# Check post-suspend recovery logs:
 grep 'POST-RESUME' /var/log/touchscreen-init.log
-
-# Check kernel driver probe:
 dmesg | grep -i -E "gdix|goodix|i2c_hid"
+```
+
+#### Step 1.4: Uninstallation
+```bash
+sudo ./scripts/uninstall/uninstall_touchscreen.sh
 ```
 
 ---
@@ -86,25 +159,30 @@ Configures the low-level `keyd` daemon to map ChromeOS top-row action keys, dyna
 
 #### Step 2.1: Installation
 ```bash
-sudo ./install_keyboard_fix.sh
+sudo ./scripts/install/install_keyboard.sh
 ```
 
-#### Step 2.2: How to Use the Keyboard Features
+#### Step 2.2: How to Use Keyboard Features
 - **Toggle Fn Lock Mode:** Press **`Left Shift + Meta (Search) + Esc`**
   - **Media Mode (Default):** Back, Forward, Refresh, Fullscreen, Overview (F5), Brightness Down/Up, Mute, Volume Down/Up.
   - **Function Keys Mode:** Direct **F1, F2, F3 ... F10** (ideal for IDEs, terminal, and gaming).
 - **F5 Action Key (ChromeOS Overview):** Mapped directly to **`Super` (`leftmeta`)**, opening GNOME Activities or KDE Plasma Window Overview instantly.
-- **Lock Screen:** Press the dedicated **Lock Key** (top right) $\to$ triggers **`Super + L`** (locks GNOME Shell immediately).
+- **Lock Screen:** Press dedicated **Lock Key** (top right) $\to$ triggers **`Super + L`** (locks GNOME Shell immediately).
 - **Keyboard Backlight Control:** Press **`Alt + F6`** (brightness down) or **`Alt + F7`** (brightness up).
 - **Temporary Cross-Access:** In either mode, hold **`Meta (Search)`** while tapping any top-row key to use the opposite mode.
 
-#### Step 2.3: Verification & Uninstallation
+#### Step 2.3: Run Diagnostic Checker & Verify Status
 ```bash
-# Check service status:
-systemctl status keyd.service
+# Run automated keyboard checker:
+sudo ./scripts/checkers/check_keyboard.sh
 
-# To uninstall and restore default keyboard behavior:
-sudo ./uninstall_keyboard_fix.sh
+# Check keyd service status:
+systemctl status keyd.service
+```
+
+#### Step 2.4: Uninstallation
+```bash
+sudo ./scripts/uninstall/uninstall_keyboard.sh
 ```
 
 ---
@@ -115,50 +193,39 @@ Installs the `cros_tablet_daemon` service to detect folding into tablet orientat
 
 #### Step 3.1: Installation
 ```bash
-sudo ./install_tablet_mode.sh
+sudo ./scripts/install/install_tablet.sh
 ```
 
 #### Step 3.2: How It Operates
-- **Instant Dual Detection:**
-  - Directly listens to kernel `Tablet Mode Switch` (`GOOG0006:00` / `/dev/input/by-path/*GOOG0006*-event`) via non-blocking `evdev` and `select()` for zero-latency response.
-  - IIO lid angle sensor (`cros-ec-lid-angle`) serves as secondary confirmation and fallback, filtering out ChromeOS EC transit noise (`500`).
-- **Entering Tablet Mode:**
-  - **Keyboard Backlight Auto-Off:** Reads current brightness, saves it, and writes `0` to `/sys/class/leds/chromeos::kbd_backlight/brightness`.
-  - **Touchpad Inhibit:** Writes `1` to `/sys/class/input/input*/inhibited`.
-  - **Dynamic Keyd Profile Switching:** Atomically switches `/etc/keyd/cros.conf` to `cros-tablet.profile`. 267 physical keys (Tab, Backspace, top-row action keys, letter/number matrix) are explicitly mapped to `noop`, completely preventing accidental inputs while holding the tablet.
-  - **Chassis Volume Rocker Active:** Hardware side volume buttons (+ / -) remain 100% functional via libinput quirk `ModelTabletModeNoSuspend=1`.
-- **Returning to Laptop Mode:**
-  - Touchpad reactivated (`inhibited = 0`).
-  - Exact previous keyboard backlight illumination level is restored.
-  - Atomically switches back to `cros-laptop.profile` (all ChromeOS shortcuts, media actions, and Fn-mode restored).
-- **Intelligent Backlight Idle Timeout (ChromeOS-Style Power Saving):**
-  - Monitors passive keyboard (`keyd`) and touchpad (`Elan`) activity with non-blocking evdev.
-  - After 30 seconds of inactivity, turns off keyboard backlight LEDs (`brightness = 0`) to save battery without affecting typing or key responsiveness.
-  - Pressing any key or touching the touchpad immediately re-illuminates the keyboard to the exact saved percentage with 0ms latency.
-  - Respects manual settings: if set to 0% manually, it remains off.
-  - Configurable via `/etc/cros_tablet_daemon.conf` (`KBD_IDLE_TIMEOUT=30`).
+- **Instant Dual Detection:** Listens to kernel `Tablet Mode Switch` (`GOOG0006:00`) via non-blocking evdev with IIO lid angle sensor fallback.
+- **Entering Tablet Mode:** Keyboard backlight turns off (saves saved brightness level), touchpad is inhibited (`inhibited = 1`), and `/etc/keyd/cros.conf` atomically switches to `cros-tablet.profile` (mutes 267 physical keys).
+- **Chassis Volume Rocker Active:** Hardware side volume buttons (+ / -) remain 100% functional via libinput quirk `ModelTabletModeNoSuspend=1`.
+- **Returning to Laptop Mode:** Touchpad reactivated, exact keyboard backlight brightness is restored, and laptop profile is atomically reloaded.
+- **Intelligent Backlight Idle Timeout:** Turns off keyboard LEDs after 30 seconds of inactivity to save battery. Touching any key or touchpad instantly restores illumination.
 
-#### Step 3.3: Verification & Uninstallation
+#### Step 3.3: Run Diagnostic Checker & Verify Status
 ```bash
-# Check daemon status:
-systemctl status cros-tablet-mode.service
+# Run automated tablet mode checker:
+sudo ./scripts/checkers/check_tablet.sh
 
 # Live sensor reading (degrees):
 cat /sys/bus/iio/devices/iio:device*/in_angl_raw
+```
 
-# To uninstall and restore default behavior:
-sudo ./uninstall_tablet_mode.sh
+#### Step 3.4: Uninstallation
+```bash
+sudo ./scripts/uninstall/uninstall_tablet.sh
 ```
 
 ---
 
-### 5. Fix 4: Battery & S0ix Sleep Optimization
+### 5. Fix 4: Battery & Native S0ix Sleep Optimization
 
-Applies kernel-level and power management optimizations tuned for the Google Volteer / Eldrid platform, achieving extended battery life and eliminating sleep battery drain.
+Applies kernel-level and power management optimizations tuned for the Google Volteer / Eldrid platform, achieving extended battery life and eliminating suspend battery drain.
 
 #### Step 4.1: Installation
 ```bash
-sudo ./optimize_battery.sh
+sudo ./scripts/install/optimize_battery.sh
 ```
 
 #### Step 4.2: What Gets Optimized
@@ -182,48 +249,44 @@ Limit maximum charge capacity to 80% to prevent continuous high-voltage chemical
 echo 80 | sudo tee /sys/class/power_supply/BAT0/charge_control_end_threshold
 ```
 
-#### Step 4.4: Verification & Diagnostic Checkers
+#### Step 4.4: Run Diagnostic Checker & Verify Status
 ```bash
-# Verify active sleep mode is s2idle:
+# Run automated battery checker:
+sudo ./scripts/checkers/check_battery.sh
+
+# Or verify manually:
 cat /sys/power/mem_sleep
-# Expected output: [s2idle]
-
-# Verify active TuneD profile:
 tuned-adm active
-
-# Verify CPU Energy Performance Preference:
 cat /sys/devices/system/cpu/cpu0/cpufreq/energy_performance_preference
-# Expected output: power (when running on battery)
-
-# Verify PCIe ASPM policy:
 cat /sys/module/pcie_aspm/parameters/policy
-# Expected output: [powersupersave]
-
-# Verify battery charge limit:
 cat /sys/class/power_supply/BAT0/charge_control_end_threshold
-# Expected output: 80
-
-# Monitor real-time discharge rate:
 sudo powertop
+```
+
+#### Step 4.5: Uninstallation
+```bash
+sudo ./scripts/uninstall/uninstall_battery.sh
 ```
 
 ---
 
 ### 6. Fix 5: ChromeOS Fingerprint Sensor & Zero-Lag Unlock
 
-Fingerprint authentication is supported via our companion project **[Rust-FP-Eldrid](https://github.com/CarrsterX/Rust-FP-Eldrid)**, patched for ChromeOS `FpInfo V2` protocol and GNOME integration.
+Configures dual authentication (password OR fingerprint) for GDM / GNOME Shell, removes artificial GDM queue latency, and installs post-resume FPMCU recovery hooks.
 
-#### Step 5.1: Install Build Dependencies & Clone
+#### Step 5.1: Build Companion Daemon (Rust-FP)
 ```bash
 sudo dnf install -y git cargo gcc pam-devel
 git clone https://github.com/CarrsterX/Rust-FP-Eldrid.git
 cd Rust-FP-Eldrid
-```
-
-#### Step 5.2: Compile & Deploy
-```bash
 cargo build --release
 sudo ./install_fingerprint.sh
+cd ..
+```
+
+#### Step 5.2: Configure GDM Dual Auth & Zero-Lag Unlock
+```bash
+sudo ./scripts/install/install_fingerprint.sh
 ```
 
 #### Step 5.3: Enroll Fingerprint Template (As Normal User, WITHOUT Sudo)
@@ -232,45 +295,19 @@ rust-fp add index
 ```
 *Follow on-screen instructions, placing and lifting your finger on the sensor until 100% complete.*
 
-#### Step 5.4: Test Authentication
-- **Terminal `sudo`:** Run `sudo -k && sudo whoami`.
-- **GNOME Lock Screen:** Lock screen (`Super + L`) and unlock by touching the sensor.
-- **Polkit Elevation:** Open applications requiring admin privileges (e.g. GNOME Disks).
-
-#### Step 5.5: Suspend / Resume Recovery Hook
-Deploy `fingerprint-resume.sh` to ensure the FPMCU D-Bus interface restarts cleanly when waking from suspend:
+#### Step 5.4: Run Diagnostic Checker & Test Authentication
 ```bash
-sudo cp fingerprint-resume.sh /lib/systemd/system-sleep/fingerprint-resume.sh
-sudo chmod +x /lib/systemd/system-sleep/fingerprint-resume.sh
+# Run automated fingerprint checker:
+sudo ./scripts/checkers/check_fingerprint.sh
+
+# Test authentication:
+sudo -k && sudo whoami
+# Test GNOME Lock Screen: Super + L
 ```
 
-#### Step 5.6: Zero-Lag GDM Auth Latency Fix
-GNOME Shell applies a 2000ms delay to biometric prompt messages by default. Accelerate this to 100ms for instantaneous unlock:
+#### Step 5.5: Uninstallation
 ```bash
-echo "GDM_MESSAGE_TIME_MULTIPLIER=0.05" | sudo tee -a /etc/environment
-```
-
----
-
-### 7. All-in-One Full Hardware Setup (Recommended)
-
-To configure all hardware components (Touchscreen, Keyboard with F5 Overview, and 2-in-1 Tablet Mode) in a single unified step, use the **Master Setup Suite**:
-
-```bash
-git clone https://github.com/CarrsterX/Eldrid_Linux_Fixes.git
-cd Eldrid_Linux_Fixes
-
-# Interactive menu (select components or install all):
-sudo ./setup.sh
-
-# Or unattended full installation of all modules:
-sudo ./setup.sh --all
-
-# Apply battery and sleep optimizations:
-sudo ./optimize_battery.sh
-
-# Run live diagnostic checks of all drivers, sensors, and daemons:
-sudo ./setup.sh --status
+sudo ./scripts/uninstall/uninstall_fingerprint.sh
 ```
 
 ---
@@ -285,7 +322,7 @@ sudo ./setup.sh --status
   - Pin 72 (`0x48`): `enable-gpios` (VDD Rail, active-high).
   - Pin 266 (`0x10A`): `reset-gpios` (Hardware Reset, active-low).
 - **Failure Analysis:** Coreboot AML executes `Sleep(30ms)` asynchronously during `_ON`. The Linux driver `i2c_hid_acpi` probes before the Goodix controller initializes, failing with `-121` (`EREMOTEIO`).
-- **Solution:** A userspace systemd unit executes `/usr/local/bin/fix-touchscreen.sh` directly asserting Pin 72, holding Reset low for 50ms, releasing Reset to 3.3V, waiting a conservative 400ms margin, and binding `i2c_hid_acpi` explicitly.
+- **Solution:** A userspace systemd unit executes `fix-touchscreen.sh` directly asserting Pin 72, holding Reset low for 50ms, releasing Reset to 3.3V, waiting a conservative 400ms margin, and binding `i2c_hid_acpi` explicitly.
 </details>
 
 <details>
