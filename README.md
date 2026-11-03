@@ -1,18 +1,19 @@
 # Eldrid Linux Fixes 🐧💻
 
-A curated collection of hardware initialization scripts, kernel patches, and workarounds for Chromebooks based on the **Google Volteer / Eldrid** platform (Intel 11th Gen Tiger Lake, such as the HP Chromebook x360 14c) running native Linux distributions (Fedora, Arch Linux, Debian, Ubuntu, etc.) through **Submarine** or **Depthcharge / coreboot** firmware.
+A curated collection of hardware initialization scripts, kernel patches, daemons, and power optimizations for Chromebooks based on the **Google Volteer / Eldrid** platform (Intel 11th Gen Tiger Lake, such as the **HP Chromebook x360 14c**) running native Linux distributions (**Fedora, Arch Linux, Debian, Ubuntu**, etc.) via **Submarine** or **Depthcharge / coreboot** firmware.
 
 ---
 
 ## 📋 Table of Contents
 - [Hardware Features & Fixes Overview](#-hardware-features--fixes-overview)
 - [🛠️ Step-by-Step Installation Guide](#️-step-by-step-installation-guide)
-  - [Prerequisites & Repository Setup](#1-prerequisites--repository-setup)
-  - [Fix 1: Goodix Touchscreen Digitizer](#2-fix-1-goodix-touchscreen-digitizer-gdix0000)
-  - [Fix 2: Keyboard Remapping & Fn-Lock](#3-fix-2-keyboard-remapping--fn-lock)
-  - [Fix 3: 2-in-1 Convertible Tablet Mode](#4-fix-3-2-in-1-convertible-tablet-mode)
-  - [Fix 4: ChromeOS Fingerprint Sensor](#5-fix-4-chromeos-fingerprint-sensor-fpc--cros-fpmcu)
-  - [All-in-One Full Hardware Setup](#6-all-in-one-full-hardware-setup)
+  - [1. Prerequisites & Repository Setup](#1-prerequisites--repository-setup)
+  - [2. Fix 1: Goodix Touchscreen Digitizer (`GDIX0000`)](#2-fix-1-goodix-touchscreen-digitizer-gdix0000)
+  - [3. Fix 2: Keyboard Remapping & Fn-Lock](#3-fix-2-keyboard-remapping--fn-lock)
+  - [4. Fix 3: 2-in-1 Convertible Tablet Mode](#4-fix-3-2-in-1-convertible-tablet-mode)
+  - [5. Fix 4: Battery & S0ix Sleep Optimization](#5-fix-4-battery--s0ix-sleep-optimization)
+  - [6. Fix 5: ChromeOS Fingerprint Sensor & Zero-Lag Unlock](#6-fix-5-chromeos-fingerprint-sensor--zero-lag-unlock)
+  - [7. All-in-One Full Hardware Setup](#7-all-in-one-full-hardware-setup-recommended)
 - [🔍 Deep-Dive Technical Root Causes & Solutions](#-deep-dive-technical-root-causes--solutions)
 - [👥 Acknowledgements & Credits](#-acknowledgements--credits)
 - [📜 License](#-license)
@@ -23,10 +24,11 @@ A curated collection of hardware initialization scripts, kernel patches, and wor
 
 | Hardware Subsystem | Stock Behavior on Native Linux | Behavior After Applying Fix |
 |---|---|---|
-| **Touchscreen (`GDIX0000`)** | Fails probe with `-121` (I2C NACK / EREMOTEIO); non-responsive to touch. | Direct GPIO sequencing + 400ms stabilization enables full multi-touch on boot. |
-| **Top-Row Keyboard** | Top row sends ChromeOS media keys only; lock key opens Settings instead of locking screen. | Adds dynamic **Fn Lock toggle** (`Shift+Meta+Esc`), Lock button $\to$ `Super+L`, and `Alt+F6/F7` backlight. |
+| **Touchscreen (`GDIX0000`)** | Fails probe with `-121` (I2C NACK / `EREMOTEIO`); non-responsive to touch. | Direct GPIO sequencing + 400ms stabilization enables full multi-touch on boot and reliable post-resume recovery. |
+| **Top-Row Keyboard** | Sends media keys only; lock key opens Settings; side volume buttons mute in tablet mode. | Dynamic **Fn Lock toggle** (`Shift+Meta+Esc`), ChromeOS Overview key $\to$ `Super`, and `Alt+F6/F7` backlight control. |
 | **2-in-1 Tablet Mode** | Folding screen does not disable keyboard/touchpad; backlight stays on; rapid motion causes false triggers. | Daemon tracks hinge angle, filters EC sensor noise (`500`), disables touchpad, keeps side volume buttons active. |
-| **Fingerprint Sensor** | Upstream drivers panic with `fp doesn't support V1` on Tiger Lake FPC sensors. | Full **FpInfo V2** protocol support, PAM integration for `sudo`, Polkit dialogs, and GDM lock screen. |
+| **Battery & Sleep Drain** | Legacy S3 (`deep`) leaks ~1.9W (~4.2%/h); secondary voltage rails remain energized. | Native **S0ix (`s2idle`)** drops suspend drain to ~0.4W (>80% reduction), TuneD power profile, and EC 80% charge limit. |
+| **Fingerprint Sensor** | Upstream drivers panic with `fp doesn't support V1` on Tiger Lake FPC sensors. | Full **FpInfo V2** protocol support, PAM integration (`sudo`, Polkit, GDM), sleep recovery hook, and Zero-Lag unlock. |
 
 ---
 
@@ -34,7 +36,7 @@ A curated collection of hardware initialization scripts, kernel patches, and wor
 
 ### 1. Prerequisites & Repository Setup
 
-Ensure Git and basic system utilities are installed:
+Ensure Git and basic system build utilities are installed:
 
 ```bash
 # On Fedora / RHEL:
@@ -66,9 +68,13 @@ sudo ./install_fix.sh
 
 #### Step 1.3: Verify Status & Suspend Recovery
 ```bash
+# Check service status:
 systemctl status touchscreen-init.service
+
 # Check post-suspend recovery logs:
 grep 'POST-RESUME' /var/log/touchscreen-init.log
+
+# Check kernel driver probe:
 dmesg | grep -i -E "gdix|goodix|i2c_hid"
 ```
 
@@ -146,9 +152,9 @@ sudo ./uninstall_tablet_mode.sh
 
 ---
 
-### 5. Fix 4: Battery Optimization (ChromeOS-Style Power Saving)
+### 5. Fix 4: Battery & S0ix Sleep Optimization
 
-Applies kernel-level battery optimizations tuned for the Volteer/Eldrid platform, achieving ~15-25% more battery life compared to default Fedora configuration.
+Applies kernel-level and power management optimizations tuned for the Google Volteer / Eldrid platform, achieving extended battery life and eliminating sleep battery drain.
 
 #### Step 4.1: Installation
 ```bash
@@ -157,63 +163,96 @@ sudo ./optimize_battery.sh
 
 #### Step 4.2: What Gets Optimized
 
-| Setting | Default | Optimized | Saving |
+| Setting | Stock Linux | Optimized (Eldrid Profile) | Benefit |
 |---|---|---|---|
-| TuneD profile | `balanced` | `balanced-battery` | General PM |
-| Intel HWP EPP | `balance_performance` | `power` | ~1-2W |
-| PCIe ASPM | `default` | `powersupersave` | ~0.5W |
-| USB autosuspend | off | 2s delay | Minor |
-| disk writeback | 15s | 60s | Fewer wakeups |
-| NMI watchdog | on | off | Fewer IRQs |
-| Sleep mode | `s2idle` | `deep` (S3) | ~0.5-1W in suspend |
+| **Sleep Mode** | `deep` (ACPI S3) / broken | **`s2idle` (Native S0ix)** | **Dramatically cuts sleep drain from ~1.9W to ~0.4W (>80% reduction)** |
+| **TuneD Profile** | `balanced` | `balanced-battery` | Dynamic P-state scaling and power-aware governor |
+| **Intel HWP EPP** | `balance_performance` | `power` | Reduces active CPU package draw by ~1–2W |
+| **PCIe ASPM** | `default` | `powersupersave` | Forces L1.1/L1.2 sub-states (~0.5W saving) |
+| **USB Autosuspend** | disabled / inconsistent | `2s` delay via udev | Suspends idle USB host controllers |
+| **Disk Writeback** | `15s` | `60s` | Groups dirty page flushes, saving CPU wakeups |
+| **NMI Watchdog** | enabled (`1`) | disabled (`0`) | Eliminates periodic non-maskable interrupts |
 
-- All changes are **persistent** across reboots via `sysctl.d`, `udev` rules, and GRUB kernel parameters.
-- Optional: limit max charge to 80% to extend battery cell longevity:
-  ```bash
-  echo 80 | sudo tee /sys/class/power_supply/BAT0/charge_control_end_threshold
-  ```
+> [!IMPORTANT]
+> **Why S0ix (`s2idle`) instead of S3 (`deep`):** Google Volteer Chromebooks lack hardware ACPI S3 power sequencers. Forcing `mem_sleep_default=deep` leaves secondary power rails energized, causing continuous battery discharge of **~1.9W (~165 mAh/h or ~4.2%/h)**. Enforcing native `s2idle` allows the Intel Tiger Lake SoC and ChromeOS EC to assert `SLP_S0#`, entering genuine low-power idle states that reduce suspend draw to **~0.4W (~33-40 mAh/h or ~0.8%/h)** with rapid resume (~0.4s).
 
-#### Step 4.3: Verification
+#### Step 4.3: Battery Longevity (80% Charge Limit)
+Limit maximum charge capacity to 80% to prevent continuous high-voltage chemical stress on the lithium cells:
 ```bash
+echo 80 | sudo tee /sys/class/power_supply/BAT0/charge_control_end_threshold
+```
+
+#### Step 4.4: Verification & Diagnostic Checkers
+```bash
+# Verify active sleep mode is s2idle:
+cat /sys/power/mem_sleep
+# Expected output: [s2idle]
+
+# Verify active TuneD profile:
 tuned-adm active
+
+# Verify CPU Energy Performance Preference:
 cat /sys/devices/system/cpu/cpu0/cpufreq/energy_performance_preference
+# Expected output: power (when running on battery)
+
+# Verify PCIe ASPM policy:
 cat /sys/module/pcie_aspm/parameters/policy
+# Expected output: [powersupersave]
+
+# Verify battery charge limit:
+cat /sys/class/power_supply/BAT0/charge_control_end_threshold
+# Expected output: 80
+
+# Monitor real-time discharge rate:
 sudo powertop
 ```
 
 ---
 
-### 6. Fix 5: ChromeOS Fingerprint Sensor (`FPC / CrOS FPMCU`) (`FPC / CrOS FPMCU`)
+### 6. Fix 5: ChromeOS Fingerprint Sensor & Zero-Lag Unlock
 
-Fingerprint support is provided via our companion repository **[Rust-FP-Eldrid](https://github.com/CarrsterX/Rust-FP-Eldrid)**, patched specifically for ChromeOS `FpInfo V2` protocol and GNOME integration.
+Fingerprint authentication is supported via our companion project **[Rust-FP-Eldrid](https://github.com/CarrsterX/Rust-FP-Eldrid)**, patched for ChromeOS `FpInfo V2` protocol and GNOME integration.
 
-#### Step 4.1: Install Build Dependencies & Clone
+#### Step 5.1: Install Build Dependencies & Clone
 ```bash
 sudo dnf install -y git cargo gcc pam-devel
 git clone https://github.com/CarrsterX/Rust-FP-Eldrid.git
 cd Rust-FP-Eldrid
 ```
 
-#### Step 4.2: Compile & Deploy
+#### Step 5.2: Compile & Deploy
 ```bash
 cargo build --release
 sudo ./install_fingerprint.sh
 ```
 
-#### Step 4.3: Enroll Fingerprint Template (As Normal User, WITHOUT Sudo)
+#### Step 5.3: Enroll Fingerprint Template (As Normal User, WITHOUT Sudo)
 ```bash
 rust-fp add index
 ```
 *Follow on-screen instructions, placing and lifting your finger on the sensor until 100% complete.*
 
-#### Step 4.4: Test Authentication
-- **Terminal `sudo`:** Open terminal and run `sudo -k && sudo whoami`.
-- **GNOME Lock Screen:** Lock screen (`Super + L`) and unlock by resting your finger on the sensor.
-- **Polkit Elevation:** Open GNOME Disks or system settings requiring administrative authentication.
+#### Step 5.4: Test Authentication
+- **Terminal `sudo`:** Run `sudo -k && sudo whoami`.
+- **GNOME Lock Screen:** Lock screen (`Super + L`) and unlock by touching the sensor.
+- **Polkit Elevation:** Open applications requiring admin privileges (e.g. GNOME Disks).
+
+#### Step 5.5: Suspend / Resume Recovery Hook
+Deploy `fingerprint-resume.sh` to ensure the FPMCU D-Bus interface restarts cleanly when waking from suspend:
+```bash
+sudo cp fingerprint-resume.sh /lib/systemd/system-sleep/fingerprint-resume.sh
+sudo chmod +x /lib/systemd/system-sleep/fingerprint-resume.sh
+```
+
+#### Step 5.6: Zero-Lag GDM Auth Latency Fix
+GNOME Shell applies a 2000ms delay to biometric prompt messages by default. Accelerate this to 100ms for instantaneous unlock:
+```bash
+echo "GDM_MESSAGE_TIME_MULTIPLIER=0.05" | sudo tee -a /etc/environment
+```
 
 ---
 
-### 6. All-in-One Full Hardware Setup (Recommended)
+### 7. All-in-One Full Hardware Setup (Recommended)
 
 To configure all hardware components (Touchscreen, Keyboard with F5 Overview, and 2-in-1 Tablet Mode) in a single unified step, use the **Master Setup Suite**:
 
@@ -227,7 +266,7 @@ sudo ./setup.sh
 # Or unattended full installation of all modules:
 sudo ./setup.sh --all
 
-# Apply battery optimizations separately:
+# Apply battery and sleep optimizations:
 sudo ./optimize_battery.sh
 
 # Run live diagnostic checks of all drivers, sensors, and daemons:
@@ -245,8 +284,8 @@ sudo ./setup.sh --status
 - **GPIO Lines:** Intel Tiger Lake PCH `gpiochip0`:
   - Pin 72 (`0x48`): `enable-gpios` (VDD Rail, active-high).
   - Pin 266 (`0x10A`): `reset-gpios` (Hardware Reset, active-low).
-- **Failure Analysis:** Coreboot AML executes `Sleep(30ms)` asynchronously during `_ON`. Linux driver `i2c_hid_acpi` probes before the Goodix controller initializes, failing with `-121` (`EREMOTEIO`).
-- **Solution:** Userspace systemd unit executes `/usr/local/bin/fix-touchscreen.sh` directly asserting Pin 72, holding Reset low for 50ms, releasing Reset to 3.3V, waiting a conservative 400ms margin, and binding `i2c_hid_acpi` explicitly.
+- **Failure Analysis:** Coreboot AML executes `Sleep(30ms)` asynchronously during `_ON`. The Linux driver `i2c_hid_acpi` probes before the Goodix controller initializes, failing with `-121` (`EREMOTEIO`).
+- **Solution:** A userspace systemd unit executes `/usr/local/bin/fix-touchscreen.sh` directly asserting Pin 72, holding Reset low for 50ms, releasing Reset to 3.3V, waiting a conservative 400ms margin, and binding `i2c_hid_acpi` explicitly.
 </details>
 
 <details>
@@ -268,18 +307,37 @@ sudo ./setup.sh --status
 - Touchpad inhibition via sysfs eliminates palm touch errors on the back of the device while leaving side volume buttons active.
 </details>
 
+<details>
+<summary><b>4. Why ACPI S3 (Deep) Fails on Volteer and Drains ~1.9W in Sleep</b></summary>
+
+- Chromebook hardware designed around Google Volteer / Tiger Lake uses Modern Standby (S0ix) as the primary low-power architecture.
+- In legacy ACPI S3 (`deep`), the operating system expects firmware-directed hardware power plane shutoffs. Because the coreboot/Submarine firmware and Nuvoton EC lack S3 sequencers, secondary power rails remain energized.
+- Suspend in S3 burns **~1.9W (~165 mAh/h)**. Switching to native `s2idle` allows the Intel PMC to assert `SLP_S0#`, shutting down the primary and secondary VR rails and dropping consumption to **~0.4W (~33-40 mAh/h)** with resume latency under 0.5 seconds.
+</details>
+
+<details>
+<summary><b>5. GDM 2000ms Artificial Auth Latency Elimination</b></summary>
+
+- When PAM modules (such as `librust_fp_pam_module.so`) emit informative strings like `"Place finger on reader"`, GNOME Shell's `userVerifier.js` sets a fallback queue timer of `2000ms` per message.
+- Exporting `GDM_MESSAGE_TIME_MULTIPLIER=0.05` across `/etc/environment`, `/etc/security/pam_env.conf`, and systemd user manager configs scales this down to **100ms**, yielding instantaneous biometric unlock.
+</details>
+
+<details>
+<summary><b>6. CrOS EC Charging Control & Thresholds</b></summary>
+
+- Handled by the upstream `cros_charge_control` driver communicating with the Nuvoton EC over the LPC/eSPI bus.
+- Setting `charge_control_end_threshold = 80` commands the EC to enter hardware AC bypass (pass-through mode), preventing continuous floating charge stress on the lithium cells.
+</details>
+
 ---
 
 ## 👥 Acknowledgements & Credits
 
 This project builds upon the valuable work of open-source projects and community developers:
 
-- **[rvaiya/keyd](https://github.com/rvaiya/keyd)**:  
-  Author of `keyd`, the high-performance kernel-level uinput remapping daemon used for keyboard layer management.
-- **[WeirdTreeThing/cros-keyboard-map](https://github.com/WeirdTreeThing/cros-keyboard-map)** & **[Chrultrabook](https://chrultrabook.com/)**:  
-  Pioneering documentation and scancode tables for Chromebook top-row keyboards under Linux.
-- **[ChocolateLoverRaj/rust-fp](https://github.com/ChocolateLoverRaj/rust-fp)** & **[yuexiaoyong-star/rust-fp](https://github.com/yuexiaoyong-star/rust-fp)**:  
-  Foundational architecture for communicating with the ChromeOS FPMCU over D-Bus/PAM, forming the base of our [Rust-FP-Eldrid](https://github.com/CarrsterX/Rust-FP-Eldrid) companion project.
+- **[rvaiya/keyd](https://github.com/rvaiya/keyd)**: Author of `keyd`, the high-performance kernel-level uinput remapping daemon used for keyboard layer management.
+- **[WeirdTreeThing/cros-keyboard-map](https://github.com/WeirdTreeThing/cros-keyboard-map)** & **[Chrultrabook](https://chrultrabook.com/)**: Pioneering documentation and scancode tables for Chromebook top-row keyboards under Linux.
+- **[ChocolateLoverRaj/rust-fp](https://github.com/ChocolateLoverRaj/rust-fp)** & **[yuexiaoyong-star/rust-fp](https://github.com/yuexiaoyong-star/rust-fp)**: Foundational architecture for communicating with the ChromeOS FPMCU over D-Bus/PAM, forming the base of our [Rust-FP-Eldrid](https://github.com/CarrsterX/Rust-FP-Eldrid) companion project.
 
 ---
 

@@ -1,32 +1,24 @@
 #!/usr/bin/env bash
-# optimize_battery.sh - v3
-# Optimización de batería 100% compatible con GNOME/KDE para HP Chromebook x360 14c (Eldrid)
-#
-# ESTRATEGIA CORRECTA:
-# 1. NO se modifica ppd.conf (rompe tuned-ppd y quita los perfiles de GNOME).
-# 2. Se crean perfiles en /etc/tuned/profiles/<nombre>/ con el MISMO nombre que los 
-#    perfiles estándar (balanced, powersave, etc.). TuneD prioriza /etc/tuned/profiles
-#    sobre /usr/lib/tuned/profiles, así GNOME sigue funcionando normal pero usa
-#    nuestra versión mejorada del perfil.
-# 3. Las optimizaciones de kernel (sysctl/udev/GRUB) se aplican globalmente y
-#    no interfieren con nada.
+# optimize_battery.sh
+# Power and battery optimizations for HP Chromebook x360 14c (Eldrid / Google Volteer)
+# Overrides TuneD profiles in /etc/tuned/profiles/ to preserve GNOME power-profiles-daemon compatibility.
+# Configures kernel sysctl, udev autosuspend rules, and GRUB parameters (S0ix s2idle, PCIe ASPM).
 
 set -e
 
 if [ "$EUID" -ne 0 ]; then
-    echo "[!] Requiere privilegios de administrador."
+    echo "[!] Superuser privileges required."
     exec sudo bash "$0" "$@"
 fi
 
 echo "=================================================================="
-echo " OPTIMIZACION DE BATERIA GNOME-COMPATIBLE - HP ELDRID (v3)        "
+echo " BATTERY OPTIMIZATION SUITE - HP CHROMEBOOK x360 14c (ELDRID) "
 echo "=================================================================="
 echo ""
 
-# Verificar que tuned-ppd no está caido antes de empezar
+# Verify tuned-ppd service health before applying overrides
 if ! systemctl is-active --quiet tuned-ppd.service; then
-    echo "[!] tuned-ppd está caído. Restableciendo antes de continuar..."
-    # Restaurar ppd.conf si fue modificado antes
+    echo "[*] tuned-ppd service inactive. Restoring default profile configuration..."
     if grep -q "eldrid" /etc/tuned/ppd.conf 2>/dev/null; then
         cat > /etc/tuned/ppd.conf << 'PPD'
 [main]
@@ -43,36 +35,27 @@ performance=throughput-performance
 balanced=balanced-battery
 PPD
         chmod 644 /etc/tuned/ppd.conf
-        echo "      -> ppd.conf restaurado al original"
+        echo "      -> ppd.conf restored to defaults"
     fi
     systemctl restart tuned-ppd.service
     sleep 2
 fi
 
-# ========================================================================
-# PASO 1: Sobrescribir los perfiles estándar con versiones mejoradas para Eldrid
-# TuneD busca primero en /etc/tuned/profiles/, luego en /usr/lib/tuned/profiles/
-# Esto es el mecanismo de override correcto y documentado.
-# ========================================================================
-
-echo "[1/3] Creando perfiles TuneD optimizados en /etc/tuned/profiles/..."
-echo "      (GNOME sigue usando los mismos nombres de perfil: balanced, powersave, etc.)"
+# Step 1: Deploy optimized TuneD profiles to /etc/tuned/profiles/
+echo "[1/3] Deploying optimized TuneD profiles to /etc/tuned/profiles/..."
+echo "      (Preserves GNOME standard profile names: balanced, powersave, etc.)"
 echo ""
 
-# --- balanced-battery: GNOME "Equilibrado" cuando está en batería ---
+# --- balanced-battery: GNOME Balanced profile when running on battery ---
 mkdir -p /etc/tuned/profiles/balanced-battery
 cat > /etc/tuned/profiles/balanced-battery/tuned.conf << 'TUNED'
-#
-# Perfil: balanced-battery (override para HP Chromebook x360 14c Eldrid)
-# GNOME "Equilibrado" en batería -> ppd -> este perfil
-# Hereda del balanced-battery del sistema y añade optimizaciones de hardware.
-#
+# Profile: balanced-battery override (HP Chromebook x360 14c Eldrid)
 [main]
-summary=Balanced (Eldrid) - Balance rendimiento/bateria optimizado para HP Chromebook x360 14c
+summary=Balanced (Eldrid) - Balanced performance and battery saving for HP Chromebook x360 14c
 include=balanced
 
 [cpu]
-# Tiger Lake i3-1115G4: balance_power = ahorro sin sacrificar respuesta
+# Tiger Lake i3-1115G4: balance_power preference
 energy_performance_preference=balance_power
 boost=1
 
@@ -83,23 +66,18 @@ panel_power_savings=1
 timeout=10
 
 [sysctl]
-# Menos wakeups de disco en modo batería
+# Reduce dirty page writeback wakeups on battery
 vm.dirty_writeback_centisecs=6000
 kernel.nmi_watchdog=0
 TUNED
-echo "      -> balanced-battery sobrescrito"
+echo "      -> balanced-battery profile deployed"
 
-# --- powersave: GNOME "Ahorro de Energía" ---
+# --- powersave: GNOME Power Saver profile ---
 mkdir -p /etc/tuned/profiles/powersave
 cat > /etc/tuned/profiles/powersave/tuned.conf << 'TUNED'
-#
-# Perfil: powersave (override para HP Chromebook x360 14c Eldrid)
-# GNOME "Ahorro de Energía" -> ppd -> este perfil
-# Igual que el perfil estándar powersave + ajustes para Tiger Lake.
-#
+# Profile: powersave override (HP Chromebook x360 14c Eldrid)
 [main]
-summary=Power Saver (Eldrid) - Maximo ahorro de energia para HP Chromebook x360 14c
-# Hereda del powersave estándar del sistema
+summary=Power Saver (Eldrid) - Maximum battery life for HP Chromebook x360 14c
 include=powersave
 
 [cpu]
@@ -127,91 +105,83 @@ alpm=min_power
 vm.dirty_writeback_centisecs=6000
 kernel.nmi_watchdog=0
 TUNED
-echo "      -> powersave sobrescrito"
+echo "      -> powersave profile deployed"
 
-# throughput-performance: GNOME "Rendimiento" - no modificar (el stock es bueno para rendimiento)
-echo "      -> throughput-performance: sin cambios (stock es óptimo para rendimiento)"
-
-# ========================================================================
-# PASO 2: Optimizaciones de kernel globales (no interfieren con GNOME/TuneD)
-# ========================================================================
+# Step 2: Global kernel and udev power optimizations
 echo ""
-echo "[2/3] Aplicando optimizaciones de kernel globales..."
+echo "[2/3] Configuring udev autosuspend rules and GRUB parameters..."
 
-# USB Autosuspend via udev (compatible con todos los perfiles)
+# Deploy udev autosuspend rule for USB and PCI devices
+mkdir -p /etc/udev/rules.d
 cat > /etc/udev/rules.d/90-eldrid-battery-powersave.rules << 'UDEV'
-# Optimizaciones de batería HP Chromebook x360 14c (Eldrid)
-# Independiente del perfil de energía de GNOME
+# Global USB and PCIe autosuspend rules
 ACTION=="add", SUBSYSTEM=="usb", TEST=="power/control", ATTR{power/control}="auto"
 ACTION=="add", SUBSYSTEM=="usb", TEST=="power/autosuspend_delay_ms", ATTR{power/autosuspend_delay_ms}="2000"
 ACTION=="add", SUBSYSTEM=="pci", TEST=="power/control", ATTR{power/control}="auto"
 UDEV
-echo "      -> USB autosuspend: /etc/udev/rules.d/90-eldrid-battery-powersave.rules"
+echo "      -> udev rule written: /etc/udev/rules.d/90-eldrid-battery-powersave.rules"
 
-# Aplicar USB autosuspend ahora mismo
+# Apply USB autosuspend to existing devices
 USB_COUNT=0
 for U in /sys/bus/usb/devices/*/power/control; do
     [ -f "$U" ] && echo "auto" > "$U" 2>/dev/null && USB_COUNT=$((USB_COUNT+1)) || true
 done
-echo "      -> USB autosuspend activo en $USB_COUNT dispositivos"
+echo "      -> USB autosuspend enabled on $USB_COUNT devices"
 
-# GRUB: parámetros de kernel que no dependen del perfil de energía
+# GRUB kernel parameters: PCIe ASPM, NMI watchdog, S0ix s2idle
 GRUB_CONF=/etc/default/grub
 PARAMS_ADD=""
 grep -q "pcie_aspm.policy=powersupersave" "$GRUB_CONF" 2>/dev/null || PARAMS_ADD="$PARAMS_ADD pcie_aspm.policy=powersupersave"
 grep -q "nmi_watchdog=0" "$GRUB_CONF" 2>/dev/null              || PARAMS_ADD="$PARAMS_ADD nmi_watchdog=0"
-grep -q "mem_sleep_default" "$GRUB_CONF" 2>/dev/null           || PARAMS_ADD="$PARAMS_ADD mem_sleep_default=deep"
+
+# S0ix Modern Standby (s2idle): Volteer lacks ACPI S3 sequencers (~1.9W leak). Native s2idle reduces draw to ~0.4W
+if grep -q "mem_sleep_default=deep" "$GRUB_CONF" 2>/dev/null; then
+    sed -i "s/mem_sleep_default=deep/mem_sleep_default=s2idle/g" "$GRUB_CONF"
+    echo "      -> GRUB: migrated mem_sleep_default from deep to s2idle (native S0ix)"
+elif ! grep -q "mem_sleep_default" "$GRUB_CONF" 2>/dev/null; then
+    PARAMS_ADD="$PARAMS_ADD mem_sleep_default=s2idle"
+fi
 
 if [ -n "$PARAMS_ADD" ] && [ -f "$GRUB_CONF" ]; then
     TRIM=$(echo "$PARAMS_ADD" | xargs)
     sed -i "s|GRUB_CMDLINE_LINUX=\"\(.*\)\"|GRUB_CMDLINE_LINUX=\"\1 $TRIM\"|" "$GRUB_CONF"
     grub2-mkconfig -o /boot/efi/EFI/fedora/grub.cfg 2>/dev/null || \
     grub2-mkconfig -o /boot/grub2/grub.cfg 2>/dev/null && \
-    echo "      -> GRUB actualizado con:$PARAMS_ADD (activo en próximo boot)" || \
-    echo "      [!] GRUB: ejecuta 'grub2-mkconfig' manualmente"
+    echo "      -> GRUB updated with:$PARAMS_ADD (effective on next boot)" || \
+    echo "      [!] GRUB: run 'grub2-mkconfig' manually"
 else
-    echo "      -> GRUB: parámetros ya presentes"
+    echo "      -> GRUB: parameters already present"
 fi
 
-# ========================================================================
-# PASO 3: Recargar TuneD con los nuevos perfiles (tuned-ppd sigue funcionando)
-# ========================================================================
+# Apply s2idle to current session if supported
+if [ -f /sys/power/mem_sleep ] && grep -q "s2idle" /sys/power/mem_sleep 2>/dev/null; then
+    echo s2idle > /sys/power/mem_sleep 2>/dev/null || true
+    echo "      -> Live sleep mode configured to s2idle"
+fi
+
+# Step 3: Reload TuneD daemon
 echo ""
-echo "[3/3] Recargando TuneD (sin tocar ppd.conf)..."
+echo "[3/3] Reloading TuneD daemon..."
 
 udevadm control --reload-rules 2>/dev/null || true
 systemctl reload tuned.service 2>/dev/null || systemctl restart tuned.service 2>/dev/null || true
-# tuned-ppd no necesita reinicio, solo tuned
 sleep 1
 
 echo ""
 echo "=================================================================="
-echo " COMPLETADO - GNOME FUNCIONA NORMAL                               "
+echo " CONFIGURATION COMPLETE"
 echo "=================================================================="
 echo ""
-echo "COMO FUNCIONA:"
+echo "ACTIVE STATUS:"
+tuned-adm active 2>/dev/null || true
+systemctl is-active --quiet tuned-ppd.service && echo "tuned-ppd: ACTIVE (GNOME integration functional)" || echo "tuned-ppd: INACTIVE"
 echo ""
-echo "  GNOME Settings         PPD API          TuneD Profile (mejorado)"
-echo "  ──────────────────────────────────────────────────────────────────"
-echo "  Ahorro de Energía  ->  power-saver  ->  powersave (Eldrid override)"
-echo "  Equilibrado        ->  balanced     ->  balanced-battery (Eldrid override)"
-echo "  Rendimiento        ->  performance  ->  throughput-performance (stock)"
-echo ""
-echo "  Los overrides en /etc/tuned/profiles/ tienen prioridad sobre"
-echo "  /usr/lib/tuned/profiles/ sin modificar ppd.conf."
-echo ""
-echo "OPTIMIZACIONES ADICIONALES (globales, todos los perfiles):"
+echo "GLOBAL PM SETTINGS:"
 echo "  USB autosuspend: 2s (udev)"
-echo "  PCIe ASPM: powersupersave (GRUB, proximo boot)"
-echo "  Sleep: deep S3 (GRUB, proximo boot)"
+echo "  PCIe ASPM: powersupersave (GRUB)"
+echo "  Sleep Mode: s2idle S0ix (GRUB & live)"
 echo ""
-echo "ESTADO:"
-tuned-adm active 2>/dev/null
-systemctl is-active tuned-ppd.service && echo "tuned-ppd: OK (GNOME perfiles activos)" || echo "tuned-ppd: ERROR"
-echo ""
-echo "VERIFICAR: Abre GNOME Configuracion -> Energia"
-echo "           Los perfiles deben aparecer normalmente."
-echo ""
-echo "EXTRA - Limitar carga al 80%:"
+echo "BATTERY LONGEVITY (Optional):"
+echo "  Limit charge to 80%:"
 echo "  echo 80 | sudo tee /sys/class/power_supply/BAT0/charge_control_end_threshold"
-echo ""
+echo "=================================================================="

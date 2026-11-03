@@ -17,60 +17,60 @@ show_banner() {
     echo "=================================================================="
     echo "       HP CHROMEBOOK x360 14c (ELDRID) - LINUX HARDWARE SUITE     "
     echo "=================================================================="
-    echo "  1) Instalar TODO (Touchscreen + Teclado + Modo Tablet) [Recomendado]"
-    echo "  2) Instalar Fix de Touchscreen (Digitalizador Goodix I2C)"
-    echo "  3) Instalar Fix de Teclado (Fila superior ChromeOS + F5 Overview + Bloqueo)"
-    echo "  4) Instalar Demonio de Modo Tablet (Bisagra, Backlight, Teclas y Volumen)"
-    echo "  5) Diagnóstico en vivo del sistema"
-    echo "  6) Salir"
+    echo "  1) Install ALL (Touchscreen + Keyboard + Tablet Mode) [Recommended]"
+    echo "  2) Install Touchscreen Fix (Goodix I2C Digitizer)"
+    echo "  3) Install Keyboard Fix (ChromeOS Top Row + F5 Overview + Lock Key)"
+    echo "  4) Install Tablet Mode Daemon (Hinge, Backlight, Key & Volume Mgmt)"
+    echo "  5) Live System Diagnostics"
+    echo "  6) Exit"
     echo "=================================================================="
 }
 
 install_touchscreen() {
     echo ""
-    echo ">>> [1/3] INSTALANDO FIX DE TOUCHSCREEN..."
+    echo ">>> [1/3] INSTALLING TOUCHSCREEN FIX..."
     bash "$DIR/install_fix.sh"
 }
 
 install_keyboard() {
     echo ""
-    echo ">>> [2/3] INSTALANDO FIX DE TECLADO..."
+    echo ">>> [2/3] INSTALLING KEYBOARD FIX..."
     bash "$DIR/install_keyboard_fix.sh"
 }
 
 install_tablet() {
     echo ""
-    echo ">>> [3/3] INSTALANDO MODO TABLET..."
+    echo ">>> [3/3] INSTALLING TABLET MODE DAEMON..."
     bash "$DIR/install_tablet_mode.sh"
 }
 
 run_diagnostics() {
     echo ""
     echo "=================================================================="
-    echo " DIAGNÓSTICO EN VIVO DEL HARDWARE "
+    echo " LIVE HARDWARE DIAGNOSTICS "
     echo "=================================================================="
-    echo -n "1. Estado Touchscreen I2C: "
+    echo -n "1. Touchscreen I2C Driver: "
     if [ -d "/sys/bus/i2c/drivers/i2c_hid_acpi/i2c-GDIX0000:00" ]; then
-        echo "[OK] Vinculado y activo (i2c-GDIX0000:00)"
+        echo "[OK] Bound and active (i2c-GDIX0000:00)"
     else
-        echo "[!] No vinculado. Ejecuta la opción 2."
+        echo "[!] Unbound. Run option 2."
     fi
 
-    echo -n "2. Servicio Keyd (Teclado): "
+    echo -n "2. Keyd Keyboard Service: "
     if systemctl is-active --quiet keyd.service; then
-        echo "[OK] Activo y ejecutándose"
+        echo "[OK] Active and running"
     else
-        echo "[!] Inactivo o no instalado. Ejecuta la opción 3."
+        echo "[!] Inactive or not installed. Run option 3."
     fi
 
-    echo -n "3. Demonio Modo Tablet: "
+    echo -n "3. Tablet Mode Daemon: "
     if systemctl is-active --quiet cros-tablet-mode.service; then
-        echo "[OK] Activo y monitoreando"
+        echo "[OK] Active and monitoring"
     else
-        echo "[!] Inactivo o no instalado. Ejecuta la opción 4."
+        echo "[!] Inactive or not installed. Run option 4."
     fi
 
-    echo -n "4. Ángulo actual de la bisagra: "
+    echo -n "4. Hinge Angle Sensor: "
     for p in /sys/bus/iio/devices/iio:device*/in_angl_raw; do
         if [ -f "$p" ]; then
             echo "$(cat "$p")° ($p)"
@@ -78,18 +78,17 @@ run_diagnostics() {
         fi
     done
 
-    echo -n "5. Brillo retroiluminación teclado: "
+    echo -n "5. Keyboard Backlight Brightness: "
     if [ -f "/sys/class/leds/chromeos::kbd_backlight/brightness" ]; then
         echo "$(cat /sys/class/leds/chromeos::kbd_backlight/brightness) / 100"
     else
-        echo "No disponible"
+        echo "Not available"
     fi
     echo "=================================================================="
     echo ""
-    read -p "Presiona Enter para continuar..." dummy
+    read -p "Press Enter to continue..." dummy
 }
 
-# Manejo de argumentos por línea de comandos (--all, --touchscreen, --keyboard, --tablet, --status)
 case "$1" in
     --all)
         install_touchscreen
@@ -115,40 +114,39 @@ case "$1" in
         ;;
 esac
 
-# Menú interactivo
 while true; do
     show_banner
-    read -p "Selecciona una opción [1-6]: " opt
+    read -p "Select an option [1-6]: " opt
     case "$opt" in
         1)
             install_touchscreen
             install_keyboard
             install_tablet
             echo ""
-            echo "[+] Todos los componentes han sido instalados y configurados exitosamente."
-            read -p "Presiona Enter para volver al menú..." dummy
+            echo "[+] All components installed and configured successfully."
+            read -p "Press Enter to return to menu..." dummy
             ;;
         2)
             install_touchscreen
-            read -p "Presiona Enter para volver al menú..." dummy
+            read -p "Press Enter to return to menu..." dummy
             ;;
         3)
             install_keyboard
-            read -p "Presiona Enter para volver al menú..." dummy
+            read -p "Press Enter to return to menu..." dummy
             ;;
         4)
             install_tablet
-            read -p "Presiona Enter para volver al menú..." dummy
+            read -p "Press Enter to return to menu..." dummy
             ;;
         5)
             run_diagnostics
             ;;
         6)
-            echo "Saliendo..."
+            echo "Exiting..."
             exit 0
             ;;
         *)
-            echo "Opción no válida."
+            echo "Invalid option."
             sleep 1
             ;;
     esac
