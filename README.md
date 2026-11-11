@@ -15,6 +15,7 @@ A curated collection of hardware initialization scripts, kernel patches, daemons
   - [4. Fix 3: 2-in-1 Convertible Tablet Mode](#4-fix-3-2-in-1-convertible-tablet-mode)
   - [5. Fix 4: Battery & Native S0ix Sleep Optimization](#5-fix-4-battery--native-s0ix-sleep-optimization)
   - [6. Fix 5: ChromeOS Fingerprint Sensor & Zero-Lag Unlock](#6-fix-5-chromeos-fingerprint-sensor--zero-lag-unlock)
+  - [7. Submarine Bootloader Management & Safe Updates](#7-submarine-bootloader-management--safe-updates)
 - [🔍 Deep-Dive Technical Root Causes & Solutions](#-deep-dive-technical-root-causes--solutions)
 - [👥 Acknowledgements & Credits](#-acknowledgements--credits)
 - [📜 License](#-license)
@@ -30,6 +31,7 @@ A curated collection of hardware initialization scripts, kernel patches, daemons
 | **2-in-1 Tablet Mode** | Folding screen does not disable keyboard/touchpad; backlight stays on; rapid motion causes false triggers. | Daemon tracks hinge angle, filters EC sensor noise (`500`), disables touchpad, keeps side volume buttons active. |
 | **Battery & Sleep Drain** | Legacy S3 (`deep`) leaks ~1.9W (~4.2%/h); secondary voltage rails remain energized. | Native **S0ix (`s2idle`)** drops suspend drain to ~0.4W (>80% reduction), TuneD power profile, and EC 80% charge limit. |
 | **Fingerprint Sensor** | Upstream drivers panic with `fp doesn't support V1` on Tiger Lake FPC sensors. | Full **FpInfo V2** protocol support, PAM integration (`sudo`, Polkit, GDM), sleep recovery hook, and Zero-Lag unlock. |
+| **Submarine Bootloader** | Manual updates risk unbootable state if a build fails or hangs; no recovery path. | 4-step guided wizard with live progress/spinner, USB/SD rescue drive (`Ctrl+U`), zero-risk test-drive flow, and automatic rollback. |
 
 ---
 
@@ -44,6 +46,7 @@ Eldrid_Linux_Fixes/
 ├── LICENSE                      # GNU General Public License v3.0
 ├── .gitignore                   # Git exclusion rules (keeps local notes private)
 └── scripts/
+    ├── update_submarine.sh      # Guided Submarine bootloader updater & rescue media creator
     ├── install/                 # Installation scripts and service definitions
     │   ├── apply_touchscreen_fix.py
     │   ├── cros-fprint-bridge.py
@@ -98,6 +101,11 @@ sudo ./setup.sh --all
 
 # Run comprehensive hardware diagnostics across all subsystems:
 sudo ./setup.sh --check
+
+# Launch Submarine Bootloader Safe Update Wizard:
+sudo ./setup.sh --submarine
+# (Or run directly):
+sudo ./scripts/update_submarine.sh
 
 # Uninstall all modules and restore stock hardware defaults:
 sudo ./setup.sh --uninstall-all
@@ -312,6 +320,69 @@ sudo ./scripts/uninstall/uninstall_fingerprint.sh
 
 ---
 
+### 7. Submarine Bootloader Management & Safe Updates
+
+Chromebooks running native Linux on stock Coreboot/Depthcharge firmware bootstrap into Fedora via **Submarine** (a minimal `u-root` Linux kexec payload installed on the `KERN-A` ChromeOS GPT kernel partition, typically `/dev/nvme0n1p4`).
+
+Because low-level bootloader partition flashing carries the risk of leaving the laptop unbootable if an upstream build encounters a regression, this suite provides an intelligent, **zero-risk 4-step guided update wizard** with live progress tracking, CPU architecture auto-detection (`x86_64` vs `arm64`), external USB/SD rescue media creation, and instant rollback.
+
+#### Step 7.1: Launching the Wizard
+
+```bash
+# Launch from master setup suite (Option 6):
+sudo ./setup.sh --submarine
+
+# Or execute directly:
+sudo ./scripts/update_submarine.sh
+```
+
+#### Step 7.2: The 4-Step Zero-Risk Workflow
+
+```text
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ STEP 1/4 [▓▓░░░░░░░░]  25%  ▸  Installation Safeguard & Rescue Media
+ STEP 2/4 [▓▓▓▓░░░░░░]  50%  ▸  Local Version & Hardware Architecture Detection
+ STEP 3/4 [▓▓▓▓▓▓░░░░]  75%  ▸  Upstream GitHub & CI Build Verification
+ STEP 4/4 [▓▓▓▓▓▓▓▓▓▓] 100%  ▸  Safe Test-Drive (Ctrl+U) or Internal SSD Flash
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+```
+
+1. **Step 1/4: Protection & Rescue Media Initialization:**
+   - Filters out system and NVMe drives strictly to prevent data loss.
+   - Automatically detects connected external media (USB Flash Drives or SD cards, `/dev/mmcblk0` or `/dev/sdX`).
+   - If an existing rescue drive is detected, provides options to restore from it (Disaster Recovery) or refresh it with the SSD's working Submarine build.
+   - If unformatted, formats the full drive into a clean GPT partition layout:
+     - **Partition 1 (64 MB):** ChromeOS Kernel (`KERN-RESCUE`, `-P 15 -T 1 -S 1`) holding a verified bootable Submarine image.
+     - **Partition 2 (Remaining):** `ext4` data partition (`SUB_RESCUE`) for local `.kpart` storage and backups.
+   - *Capacity recommendation:* Minimum 2 GB; low-capacity 4 GB to 8 GB drives are ideal.
+
+2. **Step 2/4: Local Hardware & SSD Version Inspection:**
+   - Extracts current kernel banner and Depthcharge vblock signature from `/dev/nvme0n1p4` in milliseconds without scanning raw blocks.
+   - Identifies CPU architecture (`x86_64` for Tiger Lake Eldrid or `arm64` for ARM models).
+
+3. **Step 3/4: Upstream Release & CI Build Verification:**
+   - Queries `FyraLabs/submarine` releases and maps the target download URL directly to the official automated CI workflow artifact:
+     - `x86_64`: `https://nightly.link/FyraLabs/submarine/workflows/build/main/submarine-x86_64.zip`
+     - `arm64`: `https://nightly.link/FyraLabs/submarine/workflows/build/main/submarine-arm64.zip`
+
+4. **Step 4/4: Safe Test-Drive or Direct SSD Flash:**
+   - **Recommended Test-Drive:** Flashes the new Submarine build to the **external USB/SD card only**. The internal NVMe SSD remains 100% untouched.
+   - Reboot and press **`Ctrl + U`** on the Developer Mode screen:
+     - If Fedora boots smoothly: The new Submarine build is fully compatible. Re-open the wizard and apply it to the SSD.
+     - If it fails or hangs: Power off and press **`Ctrl + D`** (or wait) to boot from the untouched SSD normally.
+
+#### Step 7.3: CLI Non-Interactive Quick Commands
+
+```bash
+# Display detailed storage diagnostics & CGPT flags:
+sudo ./scripts/update_submarine.sh --info
+
+# Perform disaster recovery / restore from backup:
+sudo ./scripts/update_submarine.sh --restore
+```
+
+---
+
 ## 🔍 Deep-Dive Technical Root Causes & Solutions
 
 <details>
@@ -366,12 +437,31 @@ sudo ./scripts/uninstall/uninstall_fingerprint.sh
 - Setting `charge_control_end_threshold = 80` commands the EC to enter hardware AC bypass (pass-through mode), preventing continuous floating charge stress on the lithium cells.
 </details>
 
+<details>
+<summary><b>7. Submarine Depthcharge Boot Flow, kexec & External Rescue Media</b></summary>
+
+- **Firmware Boot Flow:**
+  - Chromebooks in Developer Mode boot Depthcharge (Coreboot payload).
+  - Depthcharge scans the GPT partition table on internal NVMe/eMMC for partitions flagged as `-t kernel` (GUID `FE3A2A5D-4F32-41A7-B725-ACCC3285A309`) with Priority $>0$ (e.g. `15`), Tries $\ge 1$, and Successful $=1$.
+  - Depthcharge validates the signed ChromeOS kernel vblock/keyblock and executes **Submarine** into RAM.
+- **kexec Hand-Off:**
+  - Submarine (compiled with `u-root`) mounts the Linux `/boot` partition (`nvme0n1p2`), reads Boot Loader Specification (BLS) entries, loads Fedora's kernel (`vmlinuz`) and initramfs into memory, and performs a live `kexec` jump.
+  - Once Fedora is running, Submarine ceases execution and the physical partition `/dev/nvme0n1p4` is completely unmounted and idle in userspace, allowing safe in-place updates.
+- **External Boot Mechanism (`Ctrl + U`):**
+  - When powering on, pressing `Ctrl + U` instructs Depthcharge to scan external USB and MMC/SD buses instead of internal NVMe storage.
+  - By duplicating Submarine to an external GPT drive (`/dev/mmcblk0p1` or `/dev/sda1`), the external drive acts as an autonomous hardware rescue key: Submarine booted from the SD/USB card will scan all available buses, locate the internal NVMe Fedora root, and boot into the operating system even if the internal `KERN-A` partition is corrupted.
+- **Safe Unmounting & Overlap Prevention:**
+  - Standard `lsblk` outputs tree characters (`└─`) unless `-l` (flat list) is passed, which previously caused unmount routines to miss active mounts.
+  - The updater enforces flat device resolution, issues `udisksctl unmount`, terminates blocking processes via `fuser -k -9`, and zeroes the primary (LBA 0–33) and backup (last 40 sectors) GPT tables before partitioning, guaranteeing zero partition collision or busy-device errors during formatting.
+</details>
+
 ---
 
 ## 👥 Acknowledgements & Credits
 
 This project builds upon the valuable work of open-source projects and community developers:
 
+- **[FyraLabs/submarine](https://github.com/FyraLabs/submarine)**: The next-generation Depthcharge payload and Linux bootloader for modern Chromebooks that enables seamless, reliable native Linux booting via kexec.
 - **[rvaiya/keyd](https://github.com/rvaiya/keyd)**: Author of `keyd`, the high-performance kernel-level uinput remapping daemon used for keyboard layer management.
 - **[WeirdTreeThing/cros-keyboard-map](https://github.com/WeirdTreeThing/cros-keyboard-map)** & **[Chrultrabook](https://chrultrabook.com/)**: Pioneering documentation and scancode tables for Chromebook top-row keyboards under Linux.
 - **[ChocolateLoverRaj/rust-fp](https://github.com/ChocolateLoverRaj/rust-fp)** & **[yuexiaoyong-star/rust-fp](https://github.com/yuexiaoyong-star/rust-fp)**: Foundational architecture for communicating with the ChromeOS FPMCU over D-Bus/PAM, forming the base of our [Rust-FP-Eldrid](https://github.com/CarrsterX/Rust-FP-Eldrid) companion project.

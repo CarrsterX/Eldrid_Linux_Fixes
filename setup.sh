@@ -25,7 +25,8 @@ show_banner() {
     echo "  3) Run Comprehensive Diagnostics (Check All Fixes)"
     echo "  4) Run Diagnostics on Specific Module..."
     echo "  5) Uninstall Modules..."
-    echo "  6) Exit"
+    echo "  6) Manage / Update Submarine Bootloader (KERN-A)"
+    echo "  7) Exit"
     echo "=================================================================="
 }
 
@@ -188,12 +189,17 @@ case "$1" in
         bash "$UNINSTALL_DIR/uninstall_fingerprint.sh"
         exit 0
         ;;
+    --submarine)
+        shift
+        bash "$DIR/scripts/update_submarine.sh" "$@"
+        exit 0
+        ;;
 esac
 
 # Interactive loop
 while true; do
     show_banner
-    read -p "Select an option [1-6]: " opt
+    read -p "Select an option [1-7]: " opt
     case "$opt" in
         1)
             install_all
@@ -221,6 +227,11 @@ while true; do
             read -p "Press Enter to return to menu..." dummy
             ;;
         6)
+            bash "$DIR/scripts/update_submarine.sh"
+            echo ""
+            read -p "Press Enter to return to menu..." dummy
+            ;;
+        7)
             echo "Exiting..."
             exit 0
             ;;
