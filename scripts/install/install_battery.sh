@@ -128,7 +128,20 @@ for U in /sys/bus/usb/devices/*/power/control; do
 done
 echo "      -> USB autosuspend enabled on $USB_COUNT devices"
 
-# GRUB kernel parameters: PCIe ASPM, NMI watchdog, S0ix s2idle
+# Deploy zswap & virtual memory performance tuning (fast resume on 8GB RAM)
+mkdir -p /etc/sysctl.d
+cat > /etc/sysctl.d/99-zswap-performance.conf << 'SYSCTL'
+# Virtual memory tuning for zswap responsiveness on 8GB RAM
+vm.swappiness = 20
+vm.page-cluster = 0
+vm.vfs_cache_pressure = 50
+SYSCTL
+chmod 644 /etc/sysctl.d/99-zswap-performance.conf
+sysctl --system >/dev/null 2>&1 || sysctl -p /etc/sysctl.d/99-zswap-performance.conf 2>/dev/null || true
+[ -w /sys/module/zswap/parameters/max_pool_percent ] && echo 40 > /sys/module/zswap/parameters/max_pool_percent 2>/dev/null || true
+echo "      -> zswap & virtual memory tuned: /etc/sysctl.d/99-zswap-performance.conf"
+
+# GRUB kernel parameters: PCIe ASPM, NMI watchdog, S0ix s2idle, zswap pool 40%
 GRUB_CONF=/etc/default/grub
 PARAMS_ADD=""
 grep -q "pcie_aspm.policy=powersupersave" "$GRUB_CONF" 2>/dev/null || PARAMS_ADD="$PARAMS_ADD pcie_aspm.policy=powersupersave"
@@ -140,6 +153,11 @@ if grep -q "mem_sleep_default=deep" "$GRUB_CONF" 2>/dev/null; then
     echo "      -> GRUB: migrated mem_sleep_default from deep to s2idle (native S0ix)"
 elif ! grep -q "mem_sleep_default" "$GRUB_CONF" 2>/dev/null; then
     PARAMS_ADD="$PARAMS_ADD mem_sleep_default=s2idle"
+fi
+
+# Expand zswap pool to 40% in GRUB if present
+if grep -q "zswap.max_pool_percent=" "$GRUB_CONF" 2>/dev/null; then
+    sed -i 's/zswap\.max_pool_percent=[0-9]\+/zswap.max_pool_percent=40/g' "$GRUB_CONF"
 fi
 
 if [ -n "$PARAMS_ADD" ] && [ -f "$GRUB_CONF" ]; then

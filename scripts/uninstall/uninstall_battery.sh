@@ -20,3 +20,4 @@ udevadm control --reload-rules 2>/dev/null || true
 systemctl reload tuned.service 2>/dev/null || systemctl restart tuned.service 2>/dev/null || true
 
 echo "[+] Battery profile overrides removed."
+

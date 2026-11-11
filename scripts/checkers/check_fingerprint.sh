@@ -49,3 +49,4 @@ if [ -f "/etc/pam.d/gdm-fingerprint" ]; then
 else
     warn "PAM profile /etc/pam.d/gdm-fingerprint not configured"
 fi
+

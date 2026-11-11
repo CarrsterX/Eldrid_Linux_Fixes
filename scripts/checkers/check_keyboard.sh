@@ -56,3 +56,4 @@ if [ -f "/sys/class/leds/chromeos::kbd_backlight/brightness" ]; then
 else
     warn "Keyboard backlight sysfs node not found"
 fi
+

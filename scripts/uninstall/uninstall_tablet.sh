@@ -23,3 +23,4 @@ for p in /sys/class/input/input*/inhibited; do
 done
 
 echo "[+] Tablet mode daemon removed and default hardware states restored."
+

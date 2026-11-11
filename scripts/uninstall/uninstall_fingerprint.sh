@@ -23,3 +23,4 @@ rm -f /lib/systemd/system-sleep/fingerprint-resume.sh
 systemctl daemon-reload
 
 echo "[+] Fingerprint bridge and custom sleep hooks removed."
+

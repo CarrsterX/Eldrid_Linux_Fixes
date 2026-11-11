@@ -70,3 +70,4 @@ if [ -n "$TOUCHPAD_INH" ]; then
 else
     warn "Touchpad inhibition sysfs node not located"
 fi
+

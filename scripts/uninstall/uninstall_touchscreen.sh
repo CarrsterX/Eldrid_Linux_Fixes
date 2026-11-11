@@ -21,3 +21,4 @@ killall gpioset 2>/dev/null || true
 systemctl daemon-reload
 
 echo "[+] Touchscreen custom services and hooks removed."
+

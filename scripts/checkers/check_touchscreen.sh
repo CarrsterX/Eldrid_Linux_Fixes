@@ -46,3 +46,4 @@ if dmesg 2>/dev/null | grep -i -E "gdix|goodix" | tail -n 1 | grep -q -i "error"
 else
     ok "No Goodix errors reported in recent dmesg buffer"
 fi
+

@@ -15,3 +15,4 @@ rm -f /etc/keyd/cros.conf
 rm -rf /etc/keyd/profiles
 
 echo "[+] Keyboard configuration removed. Hardware restored to default behavior."
+

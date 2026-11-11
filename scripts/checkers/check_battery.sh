@@ -87,3 +87,21 @@ if [ -f "/etc/udev/rules.d/90-eldrid-battery-powersave.rules" ]; then
 else
     warn "USB autosuspend udev rule not installed"
 fi
+
+# 9. zswap pool and virtual memory responsiveness
+if [ -f "/sys/module/zswap/parameters/max_pool_percent" ]; then
+    ZSWAP_POOL=$(cat /sys/module/zswap/parameters/max_pool_percent 2>/dev/null)
+    SWAPPINESS=$(cat /proc/sys/vm/swappiness 2>/dev/null || echo "N/A")
+    PAGE_CLUSTER=$(cat /proc/sys/vm/page-cluster 2>/dev/null || echo "N/A")
+    if [ "$ZSWAP_POOL" -ge 40 ]; then
+        ok "zswap pool capacity: ${ZSWAP_POOL}% (prevents premature disk writeback on 8GB RAM)"
+    else
+        warn "zswap pool capacity: ${ZSWAP_POOL}% (recommended: 40% for fast resume)"
+    fi
+    if [ "$SWAPPINESS" -le 30 ]; then
+        ok "Virtual memory swappiness: ${SWAPPINESS} (page-cluster: ${PAGE_CLUSTER})"
+    else
+        warn "Virtual memory swappiness: ${SWAPPINESS} (high value may cause swap thrashing)"
+    fi
+fi
+
